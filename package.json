@@ -1,0 +1,26 @@
+{
+  "name": "@alvaroak/pi-ponytail",
+  "version": "0.1.0",
+  "description": "Lazy senior dev mode with intensity levels for the Pi coding agent",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "system-prompt",
+    "engineering-culture"
+  ],
+  "files": [
+    "ponytail.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./ponytail.ts"
+    ]
+  }
+}
