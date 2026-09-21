@@ -181,17 +181,10 @@ export default function ponytailExtension(pi: ExtensionAPI): void {
 		return { systemPrompt: `${event.systemPrompt}\n\n${BASE_RULESET}\n\n${MODE_TEXT[mode]}` };
 	});
 
-	pi.on("session_start", async (_event, ctx) => {
-		const entries = ctx.sessionManager.getEntries();
-		const last = entries
-			.filter((e: { type: string; customType?: string }) => e.type === "custom" && e.customType === "ponytail-mode")
-			.pop() as { data?: PonytailState } | undefined;
-
-		if (last?.data?.mode) {
-			mode = last.data.mode;
-		} else {
-			mode = DEFAULT_MODE;
-		}
+	pi.on("session_start", async (_event, _ctx) => {
+		// Every session starts at the default level; persisted entries are kept
+		// for the events feed but never restore an old mode.
+		mode = DEFAULT_MODE;
 		publish();
 	});
 }
