@@ -12,7 +12,8 @@
  * Ruleset adapted from @dietrichgebert/ponytail (MIT), skills/ponytail/SKILL.md.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { type Focusable, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
 
 export type PonytailMode = "off" | "lite" | "full" | "ultra";
 
@@ -135,6 +136,60 @@ interface PonytailState {
 	mode: PonytailMode;
 }
 
+const MODE_OPTIONS: ReadonlyArray<{ mode: PonytailMode; label: string; description: string }> = [
+	{ mode: "off", label: "Off", description: "No Ponytail instructions" },
+	{ mode: "lite", label: "Lite", description: "Suggest the lazier alternative" },
+	{ mode: "full", label: "Full", description: "Enforce the lazy-senior ladder" },
+	{ mode: "ultra", label: "Ultra", description: "Challenge requirements by default" },
+];
+
+class PonytailPicker implements Focusable {
+	readonly width = 54;
+	focused = false;
+	private selected: number;
+
+	constructor(
+		private readonly theme: Theme,
+		current: PonytailMode,
+		private readonly done: (mode: PonytailMode | undefined) => void,
+	) {
+		this.selected = Math.max(0, MODE_OPTIONS.findIndex((option) => option.mode === current));
+	}
+
+	handleInput(data: string): void {
+		if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) return this.done(undefined);
+		if (matchesKey(data, "up")) this.selected = (this.selected - 1 + MODE_OPTIONS.length) % MODE_OPTIONS.length;
+		else if (matchesKey(data, "down")) this.selected = (this.selected + 1) % MODE_OPTIONS.length;
+		else if (matchesKey(data, "return")) this.done(MODE_OPTIONS[this.selected]!.mode);
+	}
+
+	render(_width: number): string[] {
+		const innerWidth = this.width - 2;
+		const pad = (line: string) => line + " ".repeat(Math.max(0, innerWidth - visibleWidth(line)));
+		const row = (line: string) => this.theme.fg("border", "│") + pad(line) + this.theme.fg("border", "│");
+		const lines = [
+			this.theme.fg("border", `╭${"─".repeat(innerWidth)}╮`),
+			row(` ${this.theme.fg("accent", "Ponytail mode")}`),
+			this.theme.fg("border", `├${"─".repeat(innerWidth)}┤`),
+		];
+		for (let index = 0; index < MODE_OPTIONS.length; index++) {
+			const option = MODE_OPTIONS[index]!;
+			const selected = index === this.selected;
+			const marker = selected ? this.theme.fg("accent", "›") : " ";
+			const label = selected ? this.theme.fg("accent", option.label) : this.theme.fg("text", option.label);
+			lines.push(row(`${marker} ${label}  ${this.theme.fg("dim", option.description)}`));
+		}
+		lines.push(
+			this.theme.fg("border", `├${"─".repeat(innerWidth)}┤`),
+			row(` ${this.theme.fg("dim", "↑↓ select · Enter apply · Esc cancel")}`),
+			this.theme.fg("border", `╰${"─".repeat(innerWidth)}╯`),
+		);
+		return lines;
+	}
+
+	invalidate(): void {}
+}
+
 export default function ponytailExtension(pi: ExtensionAPI): void {
 	let mode: PonytailMode = DEFAULT_MODE;
 
@@ -146,22 +201,31 @@ export default function ponytailExtension(pi: ExtensionAPI): void {
 		pi.events.emit("ponytail:changed", { mode });
 	}
 
+	function setMode(ctx: ExtensionContext, next: PonytailMode): void {
+		mode = next;
+		persistState();
+		publish();
+		ctx.ui.notify(mode === "off" ? "Ponytail off." : `Ponytail: ${mode}.`, "info");
+	}
+
+	async function openPicker(ctx: ExtensionContext): Promise<void> {
+		const next = await ctx.ui.custom<PonytailMode | undefined>(
+			(_tui, theme, _keybindings, done) => new PonytailPicker(theme, mode, done),
+			{ overlay: true, overlayOptions: { anchor: "center", margin: 2 } },
+		);
+		if (next) setMode(ctx, next);
+	}
+
 	pi.registerCommand("ponytail", {
-		description: "Ponytail mode: off | lite | full | ultra (no args = status)",
+		description: "Choose Ponytail mode, or pass off | lite | full | ultra",
 		handler: async (args, ctx) => {
 			const next = args.trim().toLowerCase();
-			if (next === "") {
-				ctx.ui.notify(`Ponytail: ${mode}. Usage: /ponytail off|lite|full|ultra`, "info");
-				return;
-			}
+			if (next === "") return openPicker(ctx);
 			if (next !== "off" && next !== "lite" && next !== "full" && next !== "ultra") {
 				ctx.ui.notify(`Unknown level "${next}". Usage: /ponytail off|lite|full|ultra`, "warning");
 				return;
 			}
-			mode = next;
-			persistState();
-			publish();
-			ctx.ui.notify(mode === "off" ? "Ponytail off." : `Ponytail: ${mode}.`, "info");
+			setMode(ctx, next);
 		},
 	});
 
